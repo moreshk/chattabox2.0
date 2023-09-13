@@ -1,3 +1,4 @@
+import requests
 import argparse
 import io
 import os
@@ -10,9 +11,24 @@ from queue import Queue
 from tempfile import NamedTemporaryFile
 from time import sleep
 from sys import platform
+import sounddevice as sd  # For playing audio
+import wave  # For reading the audio file
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Get ElevenLabs API key from environment variable
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+# openai.api_key = OPENAI_API_KEY
+
+ELEVENLABS_VOICE_STABILITY = 0.30
+ELEVENLABS_VOICE_SIMILARITY = 0.75
+
+# Choose your favorite ElevenLabs voice
+ELEVENLABS_VOICE_NAME = "Raj"
+ELEVENLABS_ALL_VOICES = []
+
+
 
 def limit_conversation_history(conversation: list, limit: int = 5) -> list:
     """Limit the size of conversation history.
@@ -52,6 +68,45 @@ def generate_reply(conversation: list) -> str:
     )
     return response["choices"][0]["message"]["content"]
 
+
+def generate_audio(text: str, output_path: str = "") -> str:
+    """Converts
+    :param text: The text to convert to audio.
+    :type text : str
+    :param output_path: The location to save the finished mp3 file.
+    :type output_path: str
+    :returns: The output path for the successfully saved file.
+    :rtype: str
+    """
+    voice_id = "41Zt72AmIqyFy77mLmsn"
+
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    headers = {
+        "xi-api-key": ELEVENLABS_API_KEY,
+        "content-type": "application/json"
+    }
+    data = {
+        "text": text,
+        "voice_settings": {
+            "stability": ELEVENLABS_VOICE_STABILITY,
+            "similarity_boost": ELEVENLABS_VOICE_SIMILARITY,
+        }
+    }
+    
+    response = requests.post(url, json=data, headers=headers)
+
+    if response.status_code == 200:
+        with open(output_path, "wb") as output:
+            output.write(response.content)
+        print(f"Audio generated at {output_path}")
+        return output_path
+    else:
+        print(f"Error from ElevenLabs API: {response.status_code}, {response.text}")
+        return None
+
+from pydub import AudioSegment
+from pydub.playback import play
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--energy_threshold", default=os.environ.get('ENERGY_THRESHOLD', 1000),
@@ -66,6 +121,17 @@ def main():
                             help="Default microphone name for SpeechRecognition. "
                                  "Run this with 'list' to view available Microphones.", type=str)
     args = parser.parse_args()
+
+    stop_listening = None  # Define stop_listening here
+
+    def pause_background_listener():
+        nonlocal stop_listening  # Declare stop_listening as nonlocal
+        if stop_listening is not None:
+            stop_listening(wait_for_stop=False)
+
+    def resume_background_listener():
+        nonlocal stop_listening  # Declare stop_listening as nonlocal
+        stop_listening = recorder.listen_in_background(source, record_callback, phrase_time_limit=args.record_timeout)
 
     # Setup OpenAI API
     openai.api_key = os.environ.get('OPENAI_API_KEY')  # Now it will read from the .env file
@@ -116,8 +182,6 @@ def main():
     # Initialize conversation list
     conversation = []
 
-    # Initialize conversation list and first_message_received flag
-    conversation = []
     first_message_received = False
 
     while True:
@@ -165,12 +229,47 @@ def main():
                     except Exception as e:
                         print(f"Error generating reply: {e}")
 
+                    try:
+                        print("Generating audio...")
+                        temp_audio_file = NamedTemporaryFile(suffix=".mp3").name
+                        temp_audio_file = generate_audio(reply, temp_audio_file)  # Note the assignment
+                        if temp_audio_file:
+                            print(f"Generated audio file at {temp_audio_file}")
+
+                            # Pause background listener
+                            pause_background_listener()
+                            print("Paused background listener.")
+
+                            # # Play the audio
+                            # with wave.open(temp_audio_file, 'rb') as wf:
+                            #     print("Playing audio...")
+                            #     samplerate = wf.getframerate()
+                            #     data = wf.readframes(wf.getnframes())
+                            #     sd.play(data, samplerate)
+                            #     sd.wait()
+                            # print("Audio played.")
+
+                              # Play the audio
+                            audio = AudioSegment.from_mp3(temp_audio_file)
+                            print("Playing audio...")
+                            play(audio)
+                            print("Audio played.")
+
+                            # Resume background listener
+                            resume_background_listener()
+                            print("Resumed background listener.")
+                        else:
+                            print("Audio generation failed.")
+                    except Exception as e:
+                        print(f"Error generating or playing audio: {e}")
+
+
                     # Append assistant's reply to conversation and transcription
                     conversation.append({"role": "assistant", "content": reply})
                     transcription.append(f"Assistant: {reply}")
 
                     # Clear the screen
-                    # sleep(2)
+                    sleep(4)
                     os.system('cls' if os.name == 'nt' else 'clear')
 
                     # Display the transcribed text and the assistant's reply
@@ -188,6 +287,7 @@ def main():
                 sleep(0.25)
         except KeyboardInterrupt:
             break
+
 
     print("\n\nTranscription:")
     for line in transcription:
