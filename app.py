@@ -106,6 +106,7 @@ def generate_audio(text: str, output_path: str = "") -> str:
 
 from pydub import AudioSegment
 from pydub.playback import play
+from time import sleep
 
 def main():
     parser = argparse.ArgumentParser()
@@ -124,14 +125,52 @@ def main():
 
     stop_listening = None  # Define stop_listening here
 
+    # def pause_background_listener():
+    #     nonlocal stop_listening  # Declare stop_listening as nonlocal
+    #     if stop_listening is not None:
+    #         stop_listening(wait_for_stop=False)
+
+    # # def resume_background_listener():
+    # #     nonlocal stop_listening  # Declare stop_listening as nonlocal
+    # #     stop_listening = recorder.listen_in_background(source, record_callback, phrase_time_limit=args.record_timeout)
+
+    # def resume_background_listener():
+    #     nonlocal stop_listening  # Declare stop_listening as nonlocal
+    #     nonlocal source  # Declare source as nonlocal
+    #     source = sr.Microphone(sample_rate=16000)  # Create a new source object
+    #     stop_listening = recorder.listen_in_background(source, record_callback, phrase_time_limit=args.record_timeout)
+
+    # def pause_background_listener():
+    #     nonlocal stop_listening  # Declare stop_listening as nonlocal
+    #     if stop_listening is not None:
+    #         stop_listening(wait_for_stop=False)
+    #     print("Background listener paused.")  # Debugging
+
+    # def resume_background_listener():
+    #     nonlocal stop_listening  # Declare stop_listening as nonlocal
+    #     nonlocal source  # Declare source as nonlocal
+    #     source = sr.Microphone(sample_rate=16000)  # Create a new source object
+    #     stop_listening = recorder.listen_in_background(source, record_callback, phrase_time_limit=args.record_timeout)
+    #     print("Background listener resumed.")  # Debugging
+
+    is_listener_paused = False  # Add this flag
+
     def pause_background_listener():
-        nonlocal stop_listening  # Declare stop_listening as nonlocal
+        nonlocal stop_listening, is_listener_paused  # Declare stop_listening and is_listener_paused as nonlocal
         if stop_listening is not None:
             stop_listening(wait_for_stop=False)
+        print("Background listener paused.")  # Debugging
+        is_listener_paused = True  # Set the flag to True
 
     def resume_background_listener():
-        nonlocal stop_listening  # Declare stop_listening as nonlocal
+        nonlocal stop_listening, is_listener_paused  # Declare stop_listening and is_listener_paused as nonlocal
+        nonlocal source  # Declare source as nonlocal
+        source = sr.Microphone(sample_rate=16000)  # Create a new source object
         stop_listening = recorder.listen_in_background(source, record_callback, phrase_time_limit=args.record_timeout)
+        print("Background listener resumed.")  # Debugging
+        is_listener_paused = False  # Set the flag to False
+
+
 
     # Setup OpenAI API
     openai.api_key = os.environ.get('OPENAI_API_KEY')  # Now it will read from the .env file
@@ -240,20 +279,23 @@ def main():
                             pause_background_listener()
                             print("Paused background listener.")
 
-                            # # Play the audio
-                            # with wave.open(temp_audio_file, 'rb') as wf:
-                            #     print("Playing audio...")
-                            #     samplerate = wf.getframerate()
-                            #     data = wf.readframes(wf.getnframes())
-                            #     sd.play(data, samplerate)
-                            #     sd.wait()
-                            # print("Audio played.")
-
-                              # Play the audio
+                            # Play the audio
                             audio = AudioSegment.from_mp3(temp_audio_file)
                             print("Playing audio...")
                             play(audio)
                             print("Audio played.")
+
+                            # Optional: Sleep for the duration of the audio clip
+                            # audio_duration = len(audio) / 1000.0  # pydub calculates in millisec
+                            # print(f"Sleeping for {audio_duration} seconds.")
+                            # sleep(audio_duration)
+
+                            # # Additional sleep to ensure audio has stopped
+                            # sleep(2)
+
+                            # Clear the data_queue
+                            while not data_queue.empty():
+                                data_queue.get()
 
                             # Resume background listener
                             resume_background_listener()
