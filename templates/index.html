@@ -4,49 +4,9 @@
 <head>
     <title>Transcription</title>
     <script>
-        // async function fetchTranscription() {
-        //     const response = await fetch('/get_transcription');
-        //     const data = await response.json();
-        //     const ul = document.getElementById('transcriptions');
-        //     ul.innerHTML = '';
-        //     data.forEach(text => {
-        //         const li = document.createElement('li');
-        //         li.appendChild(document.createTextNode(text));
-        //         ul.appendChild(li);
-        //     });
-        // }
-
-        // async function fetchTranscription() {
-        //     const response = await fetch('/get_transcription');
-        //     const data = await response.json();
-        //     const ul = document.getElementById('transcriptions');
-        //     data.forEach(text => {
-        //         const li = document.createElement('li');
-        //         li.appendChild(document.createTextNode(text));
-        //         ul.appendChild(li);
-        //     });
-        // }
 
         let lastLi = null;
 
-        // async function fetchTranscription() {
-        //     const response = await fetch('/get_transcription');
-        //     const data = await response.json();
-        //     const ul = document.getElementById('transcriptions');
-
-        //     if (data.new_line) {
-        //         if (lastLi) {
-        //             lastLi.textContent = data.last_line;
-        //             lastLi = null;
-        //         }
-        //         const li = document.createElement('li');
-        //         li.appendChild(document.createTextNode(data.last_line));
-        //         ul.appendChild(li);
-        //         lastLi = li;
-        //     } else if (lastLi) {
-        //         lastLi.textContent = data.last_line;
-        //     }
-        // }
         async function fetchTranscription() {
             const response = await fetch('/get_transcription');
             const data = await response.json();

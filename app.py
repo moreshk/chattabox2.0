@@ -14,6 +14,44 @@ from sys import platform
 # Load environment variables from .env file
 load_dotenv()
 
+def limit_conversation_history(conversation: list, limit: int = 5) -> list:
+    """Limit the size of conversation history.
+
+    :param conversation: A list of previous user and assistant messages.
+    :param limit: Number of latest messages to retain. Default is 3.
+    :returns: The limited conversation history.
+    :rtype: list
+    """
+    return conversation[-limit:]
+
+def generate_reply(conversation: list) -> str:
+    """Generate a ChatGPT response.
+    :param conversation: A list of previous user and assistant messages.
+    :returns: The ChatGPT response.
+    :rtype: str
+    """
+    print("Original conversation length:", len(conversation))
+    print("Original Conversation", conversation)
+    # Limit conversation history
+    conversation = limit_conversation_history(conversation)
+    
+    print("Limited conversation length:", len(conversation))
+    print("New Conversation", conversation)
+    
+    response = openai.ChatCompletion.create(
+      model="gpt-3.5-turbo",
+      messages=[
+                {
+                    "role": "system", 
+                    "content": (
+                    "Your role is a conversational compaion. Keep your responses short and friendly.")
+                }
+
+        ] + conversation,
+        temperature=1
+    )
+    return response["choices"][0]["message"]["content"]
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--energy_threshold", default=os.environ.get('ENERGY_THRESHOLD', 1000),
@@ -71,7 +109,16 @@ def main():
 
     recorder.listen_in_background(source, record_callback, phrase_time_limit=args.record_timeout)
 
+    print("Initializing microphone. Please wait...")
+    sleep(3)  # Wait for 3 seconds
     print("Ready to transcribe.\n")
+
+    # Initialize conversation list
+    conversation = []
+
+    # Initialize conversation list and first_message_received flag
+    conversation = []
+    first_message_received = False
 
     while True:
         try:
@@ -81,6 +128,10 @@ def main():
                 if phrase_time and now - phrase_time > timedelta(seconds=args.phrase_timeout):
                     last_sample = bytes()
                     phrase_complete = True
+                elif not first_message_received:
+                    phrase_complete = True
+                    first_message_received = True
+
                 phrase_time = now
 
                 while not data_queue.empty():
@@ -100,10 +151,34 @@ def main():
                         transcript = openai.Audio.transcribe("whisper-1", audio_file)
                         text = transcript['text'].strip()
 
+                print(f"Debug: phrase_complete={phrase_complete}, text={text}")  # Debug statement
+
                 if phrase_complete:
-                    transcription.append(text)
+                    # Append user's message to conversation and transcription
+                    user_message = text
+                    conversation.append({"role": "user", "content": user_message})
+                    transcription.append(f"User: {user_message}")
+
+                    # Generate a reply based on the conversation
+                    try:
+                        reply = generate_reply(conversation)
+                    except Exception as e:
+                        print(f"Error generating reply: {e}")
+
+                    # Append assistant's reply to conversation and transcription
+                    conversation.append({"role": "assistant", "content": reply})
+                    transcription.append(f"Assistant: {reply}")
+
+                    # Clear the screen
+                    # sleep(2)
+                    os.system('cls' if os.name == 'nt' else 'clear')
+
+                    # Display the transcribed text and the assistant's reply
+                    for line in transcription:
+                        print(line)
+
                 else:
-                    transcription[-1] = text
+                    transcription[-1] = f"User: {text}"
 
                 os.system('cls' if os.name == 'nt' else 'clear')
                 for line in transcription:
