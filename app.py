@@ -48,19 +48,20 @@ def generate_reply(conversation: list) -> str:
     """
     print("Original conversation length:", len(conversation))
     print("Original Conversation", conversation)
+    
     # Limit conversation history
     conversation = limit_conversation_history(conversation)
     
     print("Limited conversation length:", len(conversation))
     print("New Conversation", conversation)
-    
+    sleep(3)
     response = openai.ChatCompletion.create(
       model="gpt-3.5-turbo",
       messages=[
                 {
                     "role": "system", 
                     "content": (
-                    "Your role is a conversational compaion. Keep your responses short and friendly.")
+                    "Your role is a conversational compaion. Keep your responses short and friendly. If the users message seems to be either same as your last response or the last few words of the previous response respond only with one word: False.")
                 }
 
         ] + conversation,
@@ -70,7 +71,8 @@ def generate_reply(conversation: list) -> str:
 
 
 def generate_audio(text: str, output_path: str = "") -> str:
-    """Converts
+    """
+    Converts
     :param text: The text to convert to audio.
     :type text : str
     :param output_path: The location to save the finished mp3 file.
@@ -78,6 +80,11 @@ def generate_audio(text: str, output_path: str = "") -> str:
     :returns: The output path for the successfully saved file.
     :rtype: str
     """
+    # Skip making the API call if the text starts with 'False'
+    if text.startswith('False'):
+        print("Text starts with 'False'. Skipping audio generation.")
+        return None
+
     voice_id = "41Zt72AmIqyFy77mLmsn"
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
@@ -85,6 +92,9 @@ def generate_audio(text: str, output_path: str = "") -> str:
         "xi-api-key": ELEVENLABS_API_KEY,
         "content-type": "application/json"
     }
+
+    print("Call to generate audio: ", text)
+    
     data = {
         "text": text,
         "voice_settings": {
@@ -103,7 +113,7 @@ def generate_audio(text: str, output_path: str = "") -> str:
     else:
         print(f"Error from ElevenLabs API: {response.status_code}, {response.text}")
         return None
-
+    
 from pydub import AudioSegment
 from pydub.playback import play
 from time import sleep
@@ -125,52 +135,8 @@ def main():
 
     stop_listening = None  # Define stop_listening here
 
-    # def pause_background_listener():
-    #     nonlocal stop_listening  # Declare stop_listening as nonlocal
-    #     if stop_listening is not None:
-    #         stop_listening(wait_for_stop=False)
-
-    # # def resume_background_listener():
-    # #     nonlocal stop_listening  # Declare stop_listening as nonlocal
-    # #     stop_listening = recorder.listen_in_background(source, record_callback, phrase_time_limit=args.record_timeout)
-
-    # def resume_background_listener():
-    #     nonlocal stop_listening  # Declare stop_listening as nonlocal
-    #     nonlocal source  # Declare source as nonlocal
-    #     source = sr.Microphone(sample_rate=16000)  # Create a new source object
-    #     stop_listening = recorder.listen_in_background(source, record_callback, phrase_time_limit=args.record_timeout)
-
-    # def pause_background_listener():
-    #     nonlocal stop_listening  # Declare stop_listening as nonlocal
-    #     if stop_listening is not None:
-    #         stop_listening(wait_for_stop=False)
-    #     print("Background listener paused.")  # Debugging
-
-    # def resume_background_listener():
-    #     nonlocal stop_listening  # Declare stop_listening as nonlocal
-    #     nonlocal source  # Declare source as nonlocal
-    #     source = sr.Microphone(sample_rate=16000)  # Create a new source object
-    #     stop_listening = recorder.listen_in_background(source, record_callback, phrase_time_limit=args.record_timeout)
-    #     print("Background listener resumed.")  # Debugging
 
     is_listener_paused = False  # Add this flag
-
-    def pause_background_listener():
-        nonlocal stop_listening, is_listener_paused  # Declare stop_listening and is_listener_paused as nonlocal
-        if stop_listening is not None:
-            stop_listening(wait_for_stop=False)
-        print("Background listener paused.")  # Debugging
-        is_listener_paused = True  # Set the flag to True
-
-    def resume_background_listener():
-        nonlocal stop_listening, is_listener_paused  # Declare stop_listening and is_listener_paused as nonlocal
-        nonlocal source  # Declare source as nonlocal
-        source = sr.Microphone(sample_rate=16000)  # Create a new source object
-        stop_listening = recorder.listen_in_background(source, record_callback, phrase_time_limit=args.record_timeout)
-        print("Background listener resumed.")  # Debugging
-        is_listener_paused = False  # Set the flag to False
-
-
 
     # Setup OpenAI API
     openai.api_key = os.environ.get('OPENAI_API_KEY')  # Now it will read from the .env file
@@ -209,13 +175,15 @@ def main():
         recorder.adjust_for_ambient_noise(source)
 
     def record_callback(_, audio: sr.AudioData) -> None:
+        if is_listener_paused:  # Check the flag here
+            return
         data = audio.get_raw_data()
         data_queue.put(data)
 
     recorder.listen_in_background(source, record_callback, phrase_time_limit=args.record_timeout)
 
     print("Initializing microphone. Please wait...")
-    sleep(3)  # Wait for 3 seconds
+    sleep(2)  # Wait for 3 seconds
     print("Ready to transcribe.\n")
 
     # Initialize conversation list
@@ -256,6 +224,7 @@ def main():
 
                 print(f"Debug: phrase_complete={phrase_complete}, text={text}")  # Debug statement
 
+                sleep(3)
                 if phrase_complete:
                     # Append user's message to conversation and transcription
                     user_message = text
@@ -275,9 +244,9 @@ def main():
                         if temp_audio_file:
                             print(f"Generated audio file at {temp_audio_file}")
 
-                            # Pause background listener
-                            pause_background_listener()
-                            print("Paused background listener.")
+                            # # Pause background listener
+                            # pause_background_listener()
+                            # print("Paused background listener.")
 
                             # Play the audio
                             audio = AudioSegment.from_mp3(temp_audio_file)
@@ -285,21 +254,10 @@ def main():
                             play(audio)
                             print("Audio played.")
 
-                            # Optional: Sleep for the duration of the audio clip
-                            # audio_duration = len(audio) / 1000.0  # pydub calculates in millisec
-                            # print(f"Sleeping for {audio_duration} seconds.")
-                            # sleep(audio_duration)
-
-                            # # Additional sleep to ensure audio has stopped
-                            # sleep(2)
-
                             # Clear the data_queue
                             while not data_queue.empty():
                                 data_queue.get()
 
-                            # Resume background listener
-                            resume_background_listener()
-                            print("Resumed background listener.")
                         else:
                             print("Audio generation failed.")
                     except Exception as e:
@@ -310,8 +268,6 @@ def main():
                     conversation.append({"role": "assistant", "content": reply})
                     transcription.append(f"Assistant: {reply}")
 
-                    # Clear the screen
-                    sleep(4)
                     os.system('cls' if os.name == 'nt' else 'clear')
 
                     # Display the transcribed text and the assistant's reply
@@ -326,7 +282,7 @@ def main():
                     print(line)
                 print('', end='', flush=True)
 
-                sleep(0.25)
+                sleep(2)
         except KeyboardInterrupt:
             break
 
